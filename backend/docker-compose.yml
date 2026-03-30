@@ -1,0 +1,90 @@
+##############################################################################
+# Infrastructure Management Agent V1 — Docker Compose
+#
+# DEFAULT (HuggingFace / Qwen):
+#   docker compose up --build
+#
+# SELECT A DIFFERENT PROVIDER:
+#   docker compose up --build gemini
+#   docker compose up --build openai
+#   docker compose up --build claude
+#
+# The provider services share the same image but override LLM_PROVIDER.
+# Non-default services use profiles so they don't start on plain `up`.
+##############################################################################
+
+x-api-base: &api-base
+  build: .
+  ports:
+    - "8080:8080"
+  env_file: .env
+  environment:
+    GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+    REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+  volumes:
+    - ./creds:/app/creds:ro
+    - ./data:/app/data
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 15s
+
+services:
+
+  # ── Default: HuggingFace / Qwen ──────────────────────────────────────────────
+  # Starts with: docker compose up --build
+  api:
+    <<: *api-base
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      LLM_PROVIDER: huggingface
+
+  # ── Gemini ────────────────────────────────────────────────────────────────────
+  # Starts with: docker compose up --build gemini
+  gemini:
+    <<: *api-base
+    profiles: ["gemini"]
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      LLM_PROVIDER: gemini
+
+  # ── OpenAI ────────────────────────────────────────────────────────────────────
+  # Starts with: docker compose up --build openai
+  openai:
+    <<: *api-base
+    profiles: ["openai"]
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      LLM_PROVIDER: openai
+
+  # ── Claude ────────────────────────────────────────────────────────────────────
+  # Starts with: docker compose up --build claude
+  claude:
+    <<: *api-base
+    profiles: ["claude"]
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      LLM_PROVIDER: claude
+
+  # ── Redis (shared by all provider services) ───────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-changeme}
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

@@ -1,0 +1,13 @@
+.env
+creds/service_account.json
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.ruff_cache/
+data/agent_interactions.jsonl

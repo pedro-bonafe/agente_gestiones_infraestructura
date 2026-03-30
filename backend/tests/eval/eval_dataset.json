@@ -1,0 +1,122 @@
+[
+  {
+    "id": "TC001",
+    "message": "Cuáles gestiones tiene el departamento Río Segundo",
+    "expected_intent": "territorial_listing",
+    "expected_entities": {"departamento": "RIO SEGUNDO"},
+    "expected_needs_clarification": false,
+    "notes": "Basic territorial listing by department"
+  },
+  {
+    "id": "TC002",
+    "message": "Dame el listado de gestiones que tiene el Ministerio de Obras Públicas en la localidad de Calmayo, departamento Calamuchita. Qué porcentaje son urgentes?",
+    "expected_intent": "ministry_territorial_listing",
+    "expected_entities": {"departamento": "CALAMUCHITA", "localidad": "CALMAYO"},
+    "expected_needs_clarification": false,
+    "notes": "Ministry + territory + urgency share"
+  },
+  {
+    "id": "TC003",
+    "message": "Cuántas gestiones abiertas hay en departamento Cruz del Eje? Cual es el tiempo promedio de demora?",
+    "expected_intent": "open_and_delay_metrics",
+    "expected_entities": {"departamento": "CRUZ DEL EJE"},
+    "expected_needs_clarification": false,
+    "notes": "Open + delay metrics"
+  },
+  {
+    "id": "TC004",
+    "message": "Cuál es el ministerio con más gestiones del departamento Cruz del Eje? Cuál es el ministerio que más demora de resolución tiene en ese departamento? Cuál es el ministerio que más gestiones urgentes tiene?",
+    "expected_intent": "department_ministry_rankings",
+    "expected_entities": {"departamento": "CRUZ DEL EJE"},
+    "expected_needs_clarification": false,
+    "notes": "Ministry rankings triple question"
+  },
+  {
+    "id": "TC005",
+    "message": "Dame el ranking de localidades con más gestiones",
+    "expected_intent": "ranking_localidades",
+    "expected_entities": {},
+    "expected_needs_clarification": false,
+    "notes": "Global ranking, no territory needed"
+  },
+  {
+    "id": "TC006",
+    "message": "Qué departamento tiene más gestiones urgentes?",
+    "expected_intent": "ranking_departamentos",
+    "expected_entities": {},
+    "expected_needs_clarification": false,
+    "notes": "Department ranking by urgency"
+  },
+  {
+    "id": "TC007",
+    "message": "Resumen general de gestiones",
+    "expected_intent": "resumen_general",
+    "expected_entities": {},
+    "expected_needs_clarification": false,
+    "notes": "Global summary"
+  },
+  {
+    "id": "TC008",
+    "message": "cuales son las gestiones de colón",
+    "expected_intent": "territorial_listing",
+    "expected_entities": {"departamento": "COLON"},
+    "expected_needs_clarification": false,
+    "notes": "Lowercase, accented department name"
+  },
+  {
+    "id": "TC009",
+    "message": "Cuántas gestiones tiene ambiente en Calamuchita?",
+    "expected_intent": "ministry_territorial_listing",
+    "expected_entities": {"departamento": "CALAMUCHITA"},
+    "expected_needs_clarification": false,
+    "notes": "Ministry alias short form"
+  },
+  {
+    "id": "TC010",
+    "message": "cuales son las gestiones?",
+    "expected_intent": "territorial_listing",
+    "expected_entities": {},
+    "expected_needs_clarification": true,
+    "notes": "Missing territory → needs clarification"
+  },
+  {
+    "id": "TC011",
+    "message": "Dame el ranking de ministerios",
+    "expected_intent": "ranking_ministerios",
+    "expected_entities": {},
+    "expected_needs_clarification": false,
+    "notes": "Ministry ranking global"
+  },
+  {
+    "id": "TC012",
+    "message": "Cuál es la capital de Francia?",
+    "expected_intent": "unknown",
+    "expected_entities": {},
+    "expected_needs_clarification": false,
+    "notes": "Off-domain query must return unknown"
+  },
+  {
+    "id": "TC013",
+    "message": "Gestiones de Calmayo",
+    "expected_intent": "territorial_listing",
+    "expected_entities": {"localidad": "CALMAYO", "departamento": "CALAMUCHITA"},
+    "expected_needs_clarification": false,
+    "notes": "Locality only — department should be inferred"
+  },
+  {
+    "id": "TC014",
+    "message": "Ranking de localidades con más urgencias",
+    "expected_intent": "ranking_urgencias_localidad",
+    "expected_entities": {},
+    "expected_needs_clarification": false,
+    "notes": "Urgent locality ranking"
+  },
+  {
+    "id": "TC015",
+    "message": "Métricas de demora para Marcos Juárez",
+    "expected_intent": "open_and_delay_metrics",
+    "expected_entities": {"departamento": "MARCOS JUAREZ"},
+    "expected_needs_clarification": false,
+    "notes": "Delay metrics with accented name"
+  }
+]
