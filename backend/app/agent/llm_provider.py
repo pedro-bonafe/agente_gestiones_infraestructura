@@ -209,13 +209,15 @@ class _OpenAICompatProvider(LLMProvider):
         full_messages = [{"role": "system", "content": system_prompt}] + messages
 
         try:
-            response = client.chat.completions.create(
-                model=self._model,
-                temperature=0.2,
-                messages=full_messages,
-                tools=tools,
-                tool_choice="auto",
-            )
+            kwargs: dict = {
+                "model": self._model,
+                "temperature": 0.2,
+                "messages": full_messages,
+            }
+            if tools:
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = "auto"
+            response = client.chat.completions.create(**kwargs)
         except (AuthenticationError, APIConnectionError, RateLimitError) as exc:
             raise RuntimeError(f"LLM provider error: {exc}") from exc
 

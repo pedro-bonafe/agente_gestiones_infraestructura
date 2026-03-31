@@ -1,286 +1,167 @@
 """
-Tool registry: maps tool names to callables and defines OpenAI function descriptors.
+Tool registry V2: 3 tools covering all query types.
 """
 
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.tools.analytics_tools import (
-    get_general_summary,
-    get_gestiones_listing,
-    get_ministry_listing,
-    get_ministry_metrics,
-    get_ministry_rankings,
-    get_open_and_delay_metrics,
-    get_ranking_departments,
-    get_ranking_localities,
-    get_ranking_ministries,
-    get_ranking_urgent_localities,
-    get_territory_metrics,
-    get_urgent_share_by_ministry,
+    buscar_gestiones,
+    buscar_por_proximidad,
+    consultar_estadisticas,
 )
 
 ToolCallable = Callable[..., Awaitable[Any]]
 
 TOOL_REGISTRY: dict[str, ToolCallable] = {
-    "get_territory_metrics": get_territory_metrics,
-    "get_open_and_delay_metrics": get_open_and_delay_metrics,
-    "get_ministry_rankings": get_ministry_rankings,
-    "get_gestiones_listing": get_gestiones_listing,
-    "get_ministry_metrics": get_ministry_metrics,
-    "get_ministry_listing": get_ministry_listing,
-    "get_urgent_share_by_ministry": get_urgent_share_by_ministry,
-    "get_ranking_localities": get_ranking_localities,
-    "get_ranking_departments": get_ranking_departments,
-    "get_ranking_ministries": get_ranking_ministries,
-    "get_ranking_urgent_localities": get_ranking_urgent_localities,
-    "get_general_summary": get_general_summary,
+    "buscar_gestiones": buscar_gestiones,
+    "consultar_estadisticas": consultar_estadisticas,
+    "buscar_por_proximidad": buscar_por_proximidad,
 }
 
 TOOL_DESCRIPTORS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_territory_metrics",
+            "name": "buscar_gestiones",
             "description": (
-                "Obtiene métricas de gestiones (total, abiertas, finalizadas, urgentes y % urgentes) "
-                "para un departamento o localidad específica. Usá esta tool siempre que necesites "
-                "las cifras generales de un territorio."
+                "Busca y lista gestiones concretas con sus detalles. "
+                "Usá cuando el usuario quiere VER gestiones: '¿cuáles son?', 'mostrame', 'listame'. "
+                "Soporta filtros exactos (territorio, ministerio, estado, categoría, canal, fechas) "
+                "y búsqueda de texto libre en el contenido de las gestiones (detalle, tipo). "
+                "Devuelve hasta 100 registros con id, fecha, estado, urgencia, ministerio, categoría, detalle, localidad."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "departamento": {
                         "type": "string",
-                        "description": "Nombre del departamento (normalizado, mayúsculas sin acentos)",
+                        "description": "Nombre del departamento (normalizado, con acentos exactos como en BQ).",
                     },
                     "localidad": {
                         "type": "string",
-                        "description": "Nombre de la localidad (opcional). Si se provee, filtra a nivel localidad.",
+                        "description": "Nombre de la localidad (opcional). Filtra a nivel localidad.",
                     },
-                },
-                "required": ["departamento"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_open_and_delay_metrics",
-            "description": (
-                "Retorna cantidad de gestiones abiertas, antigüedad promedio de las abiertas "
-                "y demora promedio histórica de resolución (en días) para un territorio."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "departamento": {"type": "string"},
-                    "localidad": {"type": "string"},
-                },
-                "required": ["departamento"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ministry_rankings",
-            "description": (
-                "Retorna el ranking de ministerios dentro de un departamento, ordenado por volumen. "
-                "Incluye para cada ministerio: total gestiones, urgentes, y demora promedio de resolución. "
-                "Usá esta tool para preguntas sobre qué ministerio tiene más gestiones, más demora o más urgencias."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "departamento": {"type": "string"},
-                },
-                "required": ["departamento"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_gestiones_listing",
-            "description": (
-                "Retorna un listado de gestiones para un departamento o localidad, "
-                "ordenadas por fecha de ingreso más antigua primero. "
-                "Incluye: id, fecha, estado, urgencia, ministerio, categoría, tipo, detalle."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "departamento": {"type": "string"},
-                    "localidad": {"type": "string"},
-                    "limit": {
-                        "type": "integer",
-                        "description": "Cantidad máxima de registros a retornar (default 20, máximo 100)",
-                    },
-                },
-                "required": ["departamento"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ministry_metrics",
-            "description": (
-                "Retorna el CONTEO REAL (total, abiertas, finalizadas, urgentes) de gestiones de un ministerio. "
-                "Usá esta tool cuando el usuario pregunte CUÁNTAS gestiones tiene un ministerio "
-                "(ej: '¿cuántas gestiones tiene el ministerio X en Y?'). "
-                "Devuelve el total exacto sin límite de filas. "
-                "Para ver el detalle/listado de las gestiones usá get_ministry_listing."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
                     "ministerio_agencia_id": {
                         "type": "string",
-                        "description": "ID del ministerio (ej: MIN_INFRAESTRUCTURA_SERVICIOS_PUBLICOS)",
+                        "description": "ID del ministerio (ej: MIN_INFRAESTRUCTURA_SERVICIOS_PUBLICOS).",
+                    },
+                    "search_terms": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Términos de búsqueda temática en el contenido (ej: ['pavimento', 'asfalto']). Máximo 5.",
+                    },
+                    "categoria": {
+                        "type": "string",
+                        "description": "Categoría exacta (ej: 'Infraestructura vial', 'Agua y saneamiento').",
+                    },
+                    "estado": {
+                        "type": "string",
+                        "description": "Estado de la gestión (ej: 'INGRESADO', 'NO REMITE SUAC', 'FINALIZADA').",
+                    },
+                    "canal_origen": {
+                        "type": "string",
+                        "description": "Canal de origen (ej: 'WHATSAPP', 'MAIL').",
+                    },
+                    "fecha_desde": {
+                        "type": "string",
+                        "description": "Fecha de inicio en formato YYYY-MM-DD.",
+                    },
+                    "fecha_hasta": {
+                        "type": "string",
+                        "description": "Fecha de fin en formato YYYY-MM-DD.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Máximo registros a devolver (default 20, máximo 100).",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_estadisticas",
+            "description": (
+                "Responde preguntas numéricas, estadísticas y de ranking sobre gestiones. "
+                "Usá para: '¿cuántas?', '¿qué porcentaje?', 'ranking de', 'promedio de días', "
+                "'tiempo de resolución', 'resumen', 'comparativa entre ministerios'. "
+                "Internamente genera SQL SELECT optimizado para la pregunta específica. "
+                "Puede combinar múltiples filtros: territorio + ministerio + estado + categoría + fechas."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pregunta": {
+                        "type": "string",
+                        "description": "La pregunta estadística en lenguaje natural (ej: '¿Cuántas gestiones hay por categoría en Santa María?').",
                     },
                     "departamento": {
                         "type": "string",
-                        "description": "Nombre del departamento (opcional).",
+                        "description": "Nombre del departamento (normalizado).",
                     },
                     "localidad": {
                         "type": "string",
                         "description": "Nombre de la localidad (opcional).",
                     },
-                },
-                "required": ["ministerio_agencia_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ministry_listing",
-            "description": (
-                "Retorna el LISTADO DETALLADO (id, fecha, estado, detalle) de gestiones de un ministerio. "
-                "Usá cuando el usuario quiera VER o LISTAR las gestiones de un ministerio (ej: '¿cuáles son?', 'mostrame'). "
-                "ATENCIÓN: retorna máximo 20 registros por defecto (hasta 100). "
-                "Para conocer el TOTAL EXACTO de gestiones de un ministerio usá get_ministry_metrics."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
                     "ministerio_agencia_id": {
                         "type": "string",
-                        "description": "ID del ministerio (ej: MIN_INFRAESTRUCTURA_SERVICIOS_PUBLICOS, MIN_EDUCACION)",
+                        "description": "ID del ministerio (opcional).",
                     },
-                    "departamento": {
+                    "fecha_desde": {
                         "type": "string",
-                        "description": "Nombre del departamento (opcional). Proveer siempre que esté disponible en el contexto.",
+                        "description": "Fecha de inicio YYYY-MM-DD.",
                     },
-                    "localidad": {
+                    "fecha_hasta": {
                         "type": "string",
-                        "description": "Nombre de la localidad (opcional). Filtrar a nivel localidad si se indica.",
+                        "description": "Fecha de fin YYYY-MM-DD.",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Cantidad máxima de registros (default 20, máximo 100)",
+                    "categoria": {
+                        "type": "string",
+                        "description": "Categoría de gestión (opcional).",
+                    },
+                    "estado": {
+                        "type": "string",
+                        "description": "Estado de la gestión (opcional).",
                     },
                 },
-                "required": ["ministerio_agencia_id"],
+                "required": ["pregunta"],
             },
         },
     },
     {
         "type": "function",
         "function": {
-            "name": "get_urgent_share_by_ministry",
+            "name": "buscar_por_proximidad",
             "description": (
-                "Retorna el PORCENTAJE DE URGENCIAS de un ministerio en un territorio. "
-                "Usá SOLO cuando el usuario pregunta específicamente por urgencias de un ministerio "
-                "(ej: '¿qué % de gestiones urgentes tiene el ministerio X?'). "
-                "NO la uses para listar ni contar gestiones en general — para eso usá get_ministry_listing."
+                "Busca gestiones geográficamente cercanas a un punto de referencia. "
+                "Usá cuando el usuario menciona 'cerca de', 'en un radio de', 'a X km de'. "
+                "Devuelve gestiones ordenadas por distancia ascendente, con campo distancia_km."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "ministerio_agencia_id": {"type": "string"},
-                    "departamento": {"type": "string"},
-                    "localidad": {"type": "string"},
+                    "lat_ref": {
+                        "type": "number",
+                        "description": "Latitud del punto de referencia (grados decimales).",
+                    },
+                    "lon_ref": {
+                        "type": "number",
+                        "description": "Longitud del punto de referencia (grados decimales).",
+                    },
+                    "radio_km": {
+                        "type": "number",
+                        "description": "Radio de búsqueda en kilómetros (default 20, máximo 500).",
+                    },
+                    "departamento": {"type": "string", "description": "Filtro opcional por departamento."},
+                    "categoria": {"type": "string", "description": "Filtro opcional por categoría."},
+                    "estado": {"type": "string", "description": "Filtro opcional por estado."},
+                    "ministerio_agencia_id": {"type": "string", "description": "Filtro opcional por ministerio."},
+                    "limit": {"type": "integer", "description": "Máximo de resultados (default 20)."},
                 },
-                "required": ["ministerio_agencia_id", "departamento"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ranking_localities",
-            "description": "Retorna el ranking de localidades ordenadas por cantidad total de gestiones.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Top N localidades (default 10)"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ranking_departments",
-            "description": "Retorna el ranking de departamentos ordenados por cantidad total de gestiones.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ranking_ministries",
-            "description": (
-                "Retorna el ranking de ministerios por cantidad de gestiones. "
-                "Puede ser global o filtrado por departamento."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "departamento": {"type": "string", "description": "Opcional: filtra por departamento"},
-                    "limit": {"type": "integer"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_ranking_urgent_localities",
-            "description": "Retorna el ranking de localidades por cantidad de gestiones urgentes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_general_summary",
-            "description": (
-                "Retorna un resumen global de todas las gestiones: total, abiertas, finalizadas, "
-                "urgentes, cantidad de departamentos y localidades. "
-                "Usá para preguntas generales sin filtro territorial."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
+                "required": ["lat_ref", "lon_ref"],
             },
         },
     },

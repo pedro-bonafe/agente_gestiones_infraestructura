@@ -15,10 +15,9 @@ logger = structlog.get_logger(__name__)
 
 MATCH_THRESHOLD = 0.80
 INTENTS_REQUIRING_TERRITORY = {
-    Intent.TERRITORIAL_LISTING,
-    Intent.OPEN_AND_DELAY_METRICS,
-    Intent.DEPARTMENT_MINISTRY_RANKINGS,
-    Intent.MINISTRY_TERRITORIAL_LISTING,
+    Intent.BUSCAR_LISTADO,
+    # consultar_numerico does NOT require territory — global summaries/rankings are valid
+    Intent.BUSCAR_POR_PROXIMIDAD,
 }
 
 
@@ -71,12 +70,14 @@ def resolve_entities(parsed: ParsedQuery, catalog: dict[str, Any]) -> ParsedQuer
     """
     Resolve raw entity strings against the catalog.
     Returns updated ParsedQuery with resolved, normalized values.
+    Also resolves lat/lon for proximity search.
     """
     departments: list[str] = catalog.get("departments", [])
     localities: list[str] = catalog.get("localities", [])
     geographies: list[dict] = catalog.get("geographies", [])
     ministry_aliases: dict[str, str] = catalog.get("ministry_aliases", {})
     ministry_map: dict[str, str] = catalog.get("ministry_map", {})
+    geo_localidades: dict[str, dict] = catalog.get("geo_localidades", {})
 
     resolved = parsed.model_copy()
 
@@ -87,6 +88,20 @@ def resolve_entities(parsed: ParsedQuery, catalog: dict[str, Any]) -> ParsedQuer
     # --- Resolve locality ---
     loc_match, loc_score = _best_match(parsed.localidad, localities)
     resolved.localidad = loc_match
+
+    # --- Fallback: if localidad didn't match any locality but matches a department, use it as department ---
+    if parsed.localidad and not loc_match and not dep_match:
+        dep_fallback, dep_fallback_score = _best_match(parsed.localidad, departments)
+        if dep_fallback:
+            resolved.departamento = dep_fallback
+            dep_match = dep_fallback
+            dep_score = dep_fallback_score
+            logger.info(
+                "Locality string resolved as department (fallback)",
+                raw=parsed.localidad,
+                departamento=dep_fallback,
+                score=round(dep_fallback_score, 2),
+            )
 
     # --- Infer department from locality if not provided ---
     if loc_match and not dep_match:
@@ -120,6 +135,36 @@ def resolve_entities(parsed: ParsedQuery, catalog: dict[str, Any]) -> ParsedQuer
     if ministry_id:
         resolved.ministerio_nombre = ministry_map.get(ministry_id, parsed.ministerio_nombre)
 
+    # --- For proximity search: resolve lat/lon from locality name ---
+    if parsed.intent == Intent.BUSCAR_POR_PROXIMIDAD:
+        ref_locality = loc_match or parsed.localidad
+        if ref_locality:
+            norm_key = _normalize(ref_locality)
+            geo_entry = geo_localidades.get(norm_key)
+
+            # Fallback: fuzzy search in geo_localidades keys
+            if not geo_entry:
+                best_geo_key, best_geo_score = _best_match(ref_locality, list(geo_localidades.keys()))
+                if best_geo_key and best_geo_score >= MATCH_THRESHOLD:
+                    geo_entry = geo_localidades[best_geo_key]
+
+            if geo_entry:
+                resolved.geo_lat = geo_entry["lat"]
+                resolved.geo_lon = geo_entry["lon"]
+                # If locality wasn't found in gestiones, still set it from geo_localidades
+                if not resolved.localidad:
+                    resolved.localidad = geo_entry["localidad"]
+                if not resolved.departamento:
+                    resolved.departamento = geo_entry.get("departamento")
+                logger.info(
+                    "Geo coords resolved for proximity",
+                    localidad=ref_locality,
+                    lat=geo_entry["lat"],
+                    lon=geo_entry["lon"],
+                )
+            else:
+                logger.warning("No geo coords found for locality", localidad=ref_locality)
+
     # --- Validate: territory required for certain intents ---
     if parsed.intent in INTENTS_REQUIRING_TERRITORY:
         if not resolved.departamento and not resolved.localidad:
@@ -129,12 +174,12 @@ def resolve_entities(parsed: ParsedQuery, catalog: dict[str, Any]) -> ParsedQuer
                     "¿Para qué territorio querés consultar? Por favor indicá el departamento o localidad."
                 )
 
-    # --- Validate: ministry required for ministry_territorial_listing ---
-    if parsed.intent == Intent.MINISTRY_TERRITORIAL_LISTING and not resolved.ministerio_agencia_id:
+    # --- Validate: proximity requires a reference locality ---
+    if parsed.intent == Intent.BUSCAR_POR_PROXIMIDAD and not resolved.localidad:
         if not resolved.needs_clarification:
             resolved.needs_clarification = True
             resolved.clarification_question = (
-                "¿A qué ministerio o agencia te referís?"
+                "¿Desde qué localidad querés buscar gestiones cercanas?"
             )
 
     logger.info(

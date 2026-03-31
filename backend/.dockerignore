@@ -1,0 +1,24 @@
+# Secrets — never bake into the image
+.env
+creds/service_account.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.ruff_cache/
+
+# Audit logs (runtime data, not needed at build time)
+data/agent_interactions.jsonl
+
+# Dev tooling
+tests/
+analisis_claude.md

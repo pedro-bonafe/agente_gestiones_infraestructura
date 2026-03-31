@@ -99,6 +99,7 @@ async def telegram_webhook(request: Request) -> dict:
         intent=result.intent,
         entities=result.entities,
         answer=result.answer,
+        message=text,
     )
 
     # Build keyboard if clarification needed

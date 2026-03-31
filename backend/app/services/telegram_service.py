@@ -47,27 +47,32 @@ def extract_message_context(update: dict) -> dict | None:
     }
 
 
-def _strip_markdown(text: str) -> str:
+def _markdown_to_html(text: str) -> str:
     """
-    Convert common LLM Markdown to plain text safe for Telegram without parse_mode.
-    Handles: **bold**, *italic*, __bold__, _italic_, ### headers, ``` code, bullet lists.
+    Convert LLM Markdown to Telegram HTML (parse_mode=HTML).
+    Order: escape HTML special chars first, then apply formatting.
     """
-    # Headers: ### Title → Title (with newline preserved)
-    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
-    # Bold: **text** or __text__ → text
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    text = re.sub(r"__(.+?)__", r"\1", text)
-    # Italic: *text* or _text_ → text (careful not to break bullet points)
-    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"\1", text)
-    text = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", r"\1", text)
-    # Code blocks: ```...``` → contents
-    text = re.sub(r"```[a-z]*\n?(.*?)```", r"\1", text, flags=re.DOTALL)
-    # Inline code: `code` → code
-    text = re.sub(r"`(.+?)`", r"\1", text)
-    # Bullet points: "- item" or "* item" → "• item"  (keep structure, remove markdown)
+    # 1. Escape HTML special chars in raw content
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    # 2. Headers: ### Title → <b>Title</b>
+    text = re.sub(r"^#{1,6}\s*(.+)$", r"<b>\1</b>", text, flags=re.MULTILINE)
+
+    # 3. Bold: **text** or __text__ → <b>text</b>
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
+
+    # 4. Code blocks: ```...``` → <code>...</code>
+    text = re.sub(r"```[a-z]*\n?(.*?)```", r"<code>\1</code>", text, flags=re.DOTALL)
+    # Inline code: `code` → <code>code</code>
+    text = re.sub(r"`(.+?)`", r"<code>\1</code>", text)
+
+    # 6. Bullet points: "- item" or "* item" → "• item"
     text = re.sub(r"^[\*\-]\s+", "• ", text, flags=re.MULTILINE)
-    # Collapse 3+ consecutive newlines to 2
+
+    # 7. Collapse 3+ consecutive newlines to 2
     text = re.sub(r"\n{3,}", "\n\n", text)
+
     return text.strip()
 
 
@@ -97,6 +102,9 @@ def _split_message(text: str, max_len: int = MAX_MESSAGE_LENGTH) -> list[str]:
     return chunks
 
 
+_PAGINATION_PATTERN = re.compile(r"¿Querés ver todas\?", re.IGNORECASE)
+
+
 async def send_message(
     chat_id: int | str,
     text: str,
@@ -108,16 +116,21 @@ async def send_message(
         logger.warning("Telegram not configured, cannot send message")
         return
 
-    # Strip markdown — send as plain text (no parse_mode)
-    clean_text = _strip_markdown(text)
-    chunks = _split_message(clean_text)
+    # Convert Markdown to HTML for Telegram rendering
+    html_text = _markdown_to_html(text)
+    chunks = _split_message(html_text)
     url = f"{TELEGRAM_API_BASE}{settings.telegram_bot_token}/sendMessage"
+
+    # Auto-show SI/NO keyboard when answer offers pagination
+    if keyboard_options is None and _PAGINATION_PATTERN.search(text):
+        keyboard_options = ["SI", "NO"]
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         for i, chunk in enumerate(chunks):
             payload: dict = {
                 "chat_id": chat_id,
                 "text": chunk,
+                "parse_mode": "HTML",
             }
             if i == 0 and reply_to_message_id:
                 payload["reply_to_message_id"] = reply_to_message_id

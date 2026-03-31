@@ -1,7 +1,6 @@
 """
 NLU layer: parses natural language queries into a typed ParsedQuery.
 Uses the configured LLM provider (huggingface | openai | gemini | claude).
-No heuristics — if the provider can't parse, returns Intent.UNKNOWN.
 """
 
 import structlog
@@ -17,24 +16,41 @@ Sos un parser semántico para un sistema de gestiones territoriales de infraestr
 Tu ÚNICA tarea es extraer estructura de lenguaje natural. No respondas preguntas ni des información. Solo extraé estructura.
 
 INTENTS disponibles — devolvé EXACTAMENTE uno:
-- territorial_listing        : listar o ver gestiones de un departamento o localidad
-- open_and_delay_metrics     : métricas de demora, tiempo promedio, gestiones abiertas
-- department_ministry_rankings: qué ministerio tiene más gestiones / más demora / más urgentes en un departamento
-- ministry_territorial_listing: gestiones de un ministerio específico en un territorio
-- ranking_localidades        : ranking de localidades por cantidad de gestiones
-- ranking_departamentos      : ranking de departamentos por cantidad de gestiones
-- ranking_ministerios        : ranking de ministerios por cantidad (global o por departamento)
-- ranking_urgencias_localidad: ranking de localidades por gestiones urgentes
-- resumen_general            : resumen global sin filtro territorial
-- unknown                    : la consulta no es sobre gestiones territoriales o no se entiende
+- buscar_listado        : listar, ver, mostrar gestiones concretas (con sus detalles)
+- consultar_numerico    : cuántos, rankings, promedios, porcentajes, estadísticas, demoras, resúmenes
+- buscar_por_proximidad : gestiones cerca de / en un radio de una localidad
+- unknown               : la consulta no es sobre gestiones territoriales o no se entiende
 
-REGLAS:
-- Extraé los valores RAW tal como aparecen en el mensaje (sin normalizar) — el sistema los resuelve contra el catálogo.
+REGLAS GENERALES:
+- Extraé valores RAW tal como aparecen en el mensaje — el sistema los normaliza después.
 - confidence: 0.85-1.0 si estás seguro; 0.50-0.75 si hay ambigüedad.
-- Si el intent requiere territorio (territorial_listing, open_and_delay_metrics, department_ministry_rankings, ministry_territorial_listing) y no identificás territorio → needs_clarification=true.
-- Para followups (mensajes cortos con "y", "también", "en ese", etc.) → completá entidades faltantes con el contexto.
-- "urgentes de un ministerio" → ministry_territorial_listing.
-- "ministerio que más demora" → department_ministry_rankings.
+- Para followups (mensajes cortos con "y", "también", "en ese", etc.) → completá con el contexto previo.
+- Para afirmativos de paginación ("sí", "si", "ver todas", "todas", "mostrame todas", "quiero verlas todas"):
+  si el turno anterior fue buscar_listado → reproducí el mismo intent + mismas entidades + cantidad=100
+
+REGLAS DE INTENT:
+- "¿cuáles son las gestiones?" / "mostrame" / "listame" → buscar_listado
+- "¿cuántas?" / "¿qué porcentaje?" / "ranking de" / "promedio de días" / "resumen" → consultar_numerico
+- "cerca de" / "en un radio de" / "a X km de" → buscar_por_proximidad
+- Si hay dudas entre buscar_listado y consultar_numerico: pregunta numérica → consultar_numerico
+
+EXTRACCIÓN DE FILTROS (solo si el usuario los menciona explícitamente):
+- search_terms: lista de términos de búsqueda temática (ej: ["pavimento"], ["agua potable", "cisterna"])
+- categoria: nombre de categoría (ej: "Infraestructura vial", "Agua y saneamiento", "Educación")
+- estado: estado de la gestión (ej: "INGRESADO", "NO REMITE SUAC", "FINALIZADA")
+- canal_origen: canal por donde llegó (ej: "WHATSAPP", "MAIL")
+- fecha_desde / fecha_hasta: expresiones de fecha (ej: "enero 2025", "este mes", "últimos 90 días", "2024-01-01")
+- radio_km: número en kilómetros para búsqueda por proximidad (default 20 si no se especifica)
+
+DEPARTAMENTO vs LOCALIDAD (importante):
+- departamento: región administrativa amplia. Ejemplos: Colón, Río Cuarto, Capital, Punilla, Calamuchita, Totoral
+- localidad: ciudad o pueblo específico. Ejemplos: La Falda, Villa Carlos Paz, Jesús María, Cosquín
+- "en Colón" / "del departamento Colón" → departamento="Colón", localidad=null
+- "en La Falda" / "en Villa Carlos Paz" → localidad="La Falda", departamento=null
+- Si no estás seguro si es departamento o localidad, preferí departamento para nombres de departamentos conocidos.
+
+ESTADOS VÁLIDOS: ARCHIVADO, DERIVADO A SUAC, FINALIZADA, INGRESADO, LISTA PARA INNAUGURAR, NO REMITE SUAC
+CANALES VÁLIDOS: APP, MAIL, WHATSAPP, TELEFONO_FUNCIONARIO, Agenda/reunión, Otro
 """
 
 NLU_JSON_SCHEMA = {
@@ -49,19 +65,23 @@ NLU_JSON_SCHEMA = {
         "localidad": {"type": ["string", "null"]},
         "ministerio_nombre": {"type": ["string", "null"]},
         "ministerio_agencia_id": {"type": ["string", "null"]},
-        "cantidad": {"type": ["integer", "null"]},
-        "orden_campo": {"type": ["string", "null"]},
-        "orden_direccion": {"type": ["string", "null"]},
-        "urgencia": {"type": ["string", "null"]},
+        "search_terms": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "categoria": {"type": ["string", "null"]},
         "estado": {"type": ["string", "null"]},
-        "needs_clarification": {"type": "boolean"},
-        "clarification_question": {"type": ["string", "null"]},
+        "canal_origen": {"type": ["string", "null"]},
+        "fecha_desde": {"type": ["string", "null"]},
+        "fecha_hasta": {"type": ["string", "null"]},
+        "radio_km": {"type": ["number", "null"]},
+        "cantidad": {"type": ["integer", "null"]},
         "confidence": {"type": "number"},
     },
     "required": [
         "intent", "departamento", "localidad", "ministerio_nombre",
-        "ministerio_agencia_id", "cantidad", "orden_campo", "orden_direccion",
-        "urgencia", "estado", "needs_clarification", "clarification_question",
+        "ministerio_agencia_id", "search_terms", "categoria", "estado",
+        "canal_origen", "fecha_desde", "fecha_hasta", "radio_km", "cantidad",
         "confidence",
     ],
 }
@@ -69,19 +89,11 @@ NLU_JSON_SCHEMA = {
 
 def _build_user_prompt(message: str, context: ConversationContext) -> str:
     lines = []
-    if context.last_intent:
-        lines.append(f"- Último intent: {context.last_intent}")
-    if context.last_entities.get("departamento"):
-        lines.append(f"- Último departamento: {context.last_entities['departamento']}")
-    if context.last_entities.get("localidad"):
-        lines.append(f"- Última localidad: {context.last_entities['localidad']}")
-    if context.last_entities.get("ministerio_agencia_id"):
-        lines.append(f"- Último ministerio ID: {context.last_entities['ministerio_agencia_id']}")
-    if context.last_entities.get("ministerio_nombre"):
-        lines.append(f"- Último ministerio: {context.last_entities['ministerio_nombre']}")
+    for turn in context.recent_turns(3):
+        lines.append(f"- [{turn.intent}] '{turn.message[:80]}' → entidades: {turn.entities}")
 
     ctx_block = (
-        "Contexto conversacional previo (útil para followups):\n" + "\n".join(lines)
+        "Contexto conversacional reciente (útil para followups):\n" + "\n".join(lines)
         if lines
         else "Sin contexto previo."
     )
@@ -99,10 +111,20 @@ def _coerce_parsed_data(data: dict) -> dict:
     except (TypeError, ValueError):
         data["confidence"] = 0.5
 
-    if data.get("orden_campo") not in {None, "fecha"}:
-        data["orden_campo"] = "fecha" if data.get("orden_direccion") else None
-    if data.get("orden_direccion") not in {None, "ASC", "DESC"}:
-        data["orden_direccion"] = None
+    # Ensure search_terms is a list
+    if not isinstance(data.get("search_terms"), list):
+        data["search_terms"] = []
+
+    # Clamp radio_km
+    if data.get("radio_km") is not None:
+        try:
+            data["radio_km"] = max(1.0, min(float(data["radio_km"]), 500.0))
+        except (TypeError, ValueError):
+            data["radio_km"] = 20.0
+
+    # NLU never sets clarification — that's catalog_resolver's job
+    data["needs_clarification"] = False
+    data["clarification_question"] = None
 
     return data
 

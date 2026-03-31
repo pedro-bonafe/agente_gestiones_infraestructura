@@ -62,6 +62,7 @@ async def query_agent(
         intent=result.intent,
         entities=result.entities,
         answer=result.answer,
+        message=body.message,
     )
     await log_interaction(request=body, result=result, latency_ms=latency_ms, error=error)
 

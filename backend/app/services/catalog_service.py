@@ -104,6 +104,23 @@ def _load_from_bigquery_sync() -> dict[str, Any] | None:
         )
         ministry_map = {r["ministerio_agencia_id"]: r["ministerio_agencia_nombre"] for r in ministry_rows}
 
+        # Load geo_localidades for proximity search (lat_centro, lon_centro per locality)
+        geo_localidades: dict[str, dict] = {}
+        try:
+            geo_rows_coords = run(
+                f"SELECT localidad, departamento, lat_centro, lon_centro FROM `{dataset}.geo_localidades` WHERE activo = TRUE AND lat_centro IS NOT NULL"
+            )
+            for r in geo_rows_coords:
+                key = _normalize(r["localidad"])
+                geo_localidades[key] = {
+                    "localidad": r["localidad"],
+                    "departamento": r["departamento"],
+                    "lat": float(r["lat_centro"]),
+                    "lon": float(r["lon_centro"]),
+                }
+        except Exception as exc:
+            logger.warning("Failed to load geo_localidades, proximity search unavailable", error=str(exc))
+
         # Merge with snapshot aliases
         snapshot = _load_snapshot()
         ministry_aliases = {**snapshot.get("ministry_aliases", {}), **_build_ministry_aliases(ministry_map)}
@@ -113,6 +130,7 @@ def _load_from_bigquery_sync() -> dict[str, Any] | None:
             departments=len(departments),
             localities=len(localities),
             ministries=len(ministry_map),
+            geo_localities=len(geo_localidades),
         )
         return {
             "departments": departments,
@@ -120,6 +138,7 @@ def _load_from_bigquery_sync() -> dict[str, Any] | None:
             "geographies": geographies,
             "ministry_map": ministry_map,
             "ministry_aliases": ministry_aliases,
+            "geo_localidades": geo_localidades,
             "source": "bigquery",
         }
     except Exception as exc:

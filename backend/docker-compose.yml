@@ -43,6 +43,7 @@ services:
     <<: *api-base
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
       LLM_PROVIDER: huggingface
 
   # ── Gemini ────────────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ services:
     profiles: ["gemini"]
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
       LLM_PROVIDER: gemini
 
   # ── OpenAI ────────────────────────────────────────────────────────────────────
@@ -61,6 +63,7 @@ services:
     profiles: ["openai"]
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
       LLM_PROVIDER: openai
 
   # ── Claude ────────────────────────────────────────────────────────────────────
@@ -70,6 +73,7 @@ services:
     profiles: ["claude"]
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/creds/service_account.json
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
       LLM_PROVIDER: claude
 
   # ── Redis (shared by all provider services) ───────────────────────────────────
