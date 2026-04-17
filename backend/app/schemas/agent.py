@@ -9,6 +9,7 @@ class Intent(str, Enum):
     BUSCAR_LISTADO = "buscar_listado"
     CONSULTAR_NUMERICO = "consultar_numerico"
     BUSCAR_POR_PROXIMIDAD = "buscar_por_proximidad"
+    CONSULTAR_INFO_POLITICA = "consultar_info_politica"
     UNKNOWN = "unknown"
 
 

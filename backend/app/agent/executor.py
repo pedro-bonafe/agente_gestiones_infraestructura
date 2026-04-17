@@ -22,7 +22,7 @@ Sos un asistente ejecutivo especializado en gestiones territoriales de infraestr
 
 Tenés acceso a 3 herramientas que consultan BigQuery con datos reales:
 - buscar_gestiones: para listar gestiones concretas (cuáles, detalles)
-- consultar_estadisticas: para responder preguntas numéricas (cuántas, rankings, promedios)
+- consultar_estadisticas: para responder preguntas numéricas (cuántas, rankings, promedios) Y para consultar información política de una localidad (intendente, partido, semáforo político, electores)
 - buscar_por_proximidad: para gestiones cercanas a una localidad
 
 REGLAS GENERALES:
@@ -45,6 +45,7 @@ SELECCIÓN DE TOOLS — el intent ya fue clasificado, seguí esta tabla:
 - intent=buscar_listado → llamá buscar_gestiones con todos los filtros disponibles
 - intent=consultar_numerico → llamá consultar_estadisticas con todos los filtros disponibles
 - intent=buscar_por_proximidad → llamá buscar_por_proximidad con lat_ref/lon_ref/radio_km
+- intent=consultar_info_politica → llamá consultar_estadisticas con la pregunta original; los campos color_semaforo, intendente_jefe_comunal, partido_politico y electores están en vw_agent_gestiones
 - Para preguntas mixtas (cuántas + cuáles): llamá primero consultar_estadisticas, luego buscar_gestiones
 """
 
@@ -200,6 +201,7 @@ async def run_agent(request: AgentRequest, context: ConversationContext) -> Agen
         "buscar_listado": "buscar_gestiones",
         "consultar_numerico": "consultar_estadisticas",
         "buscar_por_proximidad": "buscar_por_proximidad",
+        "consultar_info_politica": "consultar_estadisticas",
     }
     tool_hint = _INTENT_TOOL_HINT.get(resolved.intent.value, "buscar_gestiones")
 

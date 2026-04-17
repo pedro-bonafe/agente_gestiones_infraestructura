@@ -150,6 +150,10 @@ Columnas disponibles:
   costo_estimado NUMERIC, costo_moneda STRING
   es_abierta BOOLEAN, es_finalizada BOOLEAN, es_urgente BOOLEAN
   dias_abierta INT, dias_resolucion INT
+  color_semaforo STRING  -- color político de la localidad (ej: 'Azul', 'Amarillo', 'Rojo')
+  intendente_jefe_comunal STRING  -- nombre del intendente o jefe comunal
+  partido_politico STRING  -- partido político que gobierna la localidad
+  electores INT  -- cantidad de electores habilitados en la localidad
 
 Funciones BigQuery útiles: COUNT(*), COUNTIF(condicion), AVG(), ROUND(), SAFE_DIVIDE(), COUNT(DISTINCT col)
 
