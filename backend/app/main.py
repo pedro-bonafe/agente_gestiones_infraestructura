@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Infrastructure Management Agent V1",
+    title="Infrastructure Management Agent V2",
     description=(
         "Conversational agent for querying infrastructure management data "
         "using natural language. Powered by OpenAI + BigQuery."
