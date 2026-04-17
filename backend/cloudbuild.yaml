@@ -1,0 +1,36 @@
+steps:
+  # 1. Build de la imagen
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -t
+      - southamerica-east1-docker.pkg.dev/essential-haiku-482815-u4/agente-infra/backend:$COMMIT_SHA
+      - -t
+      - southamerica-east1-docker.pkg.dev/essential-haiku-482815-u4/agente-infra/backend:latest
+      - .
+    dir: backend
+
+  # 2. Push de la imagen
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - --all-tags
+      - southamerica-east1-docker.pkg.dev/essential-haiku-482815-u4/agente-infra/backend
+
+  # 3. Deploy — solo actualiza la imagen, Cloud Run mantiene el resto de la config
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - run
+      - deploy
+      - agente-infra
+      - --image=southamerica-east1-docker.pkg.dev/essential-haiku-482815-u4/agente-infra/backend:$COMMIT_SHA
+      - --region=southamerica-east1
+      - --platform=managed
+
+images:
+  - southamerica-east1-docker.pkg.dev/essential-haiku-482815-u4/agente-infra/backend:$COMMIT_SHA
+  - southamerica-east1-docker.pkg.dev/essential-haiku-482815-u4/agente-infra/backend:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

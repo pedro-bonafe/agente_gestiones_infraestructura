@@ -1,0 +1,7 @@
+# Scripts con credenciales — nunca commitear
+secretManager
+secretManager.sh
+secretManager.ps1
+*.secrets
+deploy_secrets*
+analisis_claude.md
